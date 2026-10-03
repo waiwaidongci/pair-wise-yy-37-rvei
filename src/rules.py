@@ -1,8 +1,16 @@
 from __future__ import annotations
+import hashlib
+import json
 from .domain import ConflictError, ValidationError
 TITLE='空气污染源许可与合规检查'; ENTITY='排污许可'; ID_PREFIX='AQ'
+EQUIPMENT_ENTITY='治理设备'; BATCH_ENTITY='停用批次'; BATCH_ID_PREFIX='DB'
 SEVERITIES=['low', 'medium', 'high', 'critical']; STATES=['draft', 'submitted', 'inspection', 'correction', 'approved']; TRANSITIONS={'draft': ['submitted'], 'submitted': ['inspection'], 'inspection': ['correction'], 'correction': ['approved'], 'approved': []}; TRANSITION_ROLES={'submitted': ['applicant'], 'inspection': ['inspector'], 'correction': ['inspector'], 'approved': ['compliance_manager']}
 CREATE_ROLES=set(['applicant']); RECORD_ROLES=set(['applicant', 'inspector']); AUDIT_ROLES=set(['compliance_manager', 'viewer']); VIEW_ROLES=set(['applicant', 'inspector', 'compliance_manager', 'viewer'])
+EQUIPMENT_ROLES=set(['inspector', 'compliance_manager']); DEACTIVATION_ROLES=set(['inspector', 'compliance_manager']); RECORD_CLOSE_ROLES=set(['applicant', 'inspector'])
+INSPECTION_KIND='inspection'; RECTIFICATION_KIND='rectification'; RELEASE_BASIS_KINDS=(INSPECTION_KIND, RECTIFICATION_KIND)
+EFFECT_PERMIT_FROZEN='permit_frozen'; EFFECT_INSPECTION_FROZEN='inspection_frozen'; EFFECT_RECTIFICATION_OPEN='rectification_open'
+BATCH_PENDING='pending'; BATCH_ACTIVE='active'
+RELEASE_VALID='valid'; RELEASE_INVALIDATED='invalidated'; DECISION_RELEASED='released'; DECISION_HELD='held'
 SEVERITY_WEIGHT={'low': 1.0, 'medium': 3.0, 'high': 6.0, 'critical': 9.0}; DEADLINE_HOURS={'low': 72, 'medium': 24, 'high': 8, 'critical': 4}; TERMINAL_STATES=set(['approved'])
 def priority_score(severity,quantity=0.0,threshold=1.0,open_records=0):
     if severity not in SEVERITY_WEIGHT: raise ValidationError("unknown severity")
@@ -20,3 +28,9 @@ def validate_transition(current,target):
     if not can_transition(current,target): raise ConflictError(f"不能从{current}转换到{target}")
 def completion_blockers(target,open_records): return ["仍有未关闭事项"] if target in TERMINAL_STATES and open_records>0 else []
 def role_for_transition(target): return set(TRANSITION_ROLES.get(target,[]))
+def deactivation_key(equipment_id,period_start,period_end): return f"{equipment_id}:{period_start}:{period_end}"
+def release_decision(open_rectifications): return DECISION_HELD if open_rectifications>0 else DECISION_RELEASED
+def release_signature(records):
+    basis=sorted((int(r["id"]),r["kind"],r["status"]) for r in records if r["kind"] in RELEASE_BASIS_KINDS)
+    raw=json.dumps(basis,ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()

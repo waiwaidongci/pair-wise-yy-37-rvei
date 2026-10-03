@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from datetime import datetime
+from typing import Any, Dict, Optional, Tuple
 class ErrorKind:
     VALIDATION="validation"; NOT_FOUND="not_found"; FORBIDDEN="forbidden"; CONFLICT="conflict"
 class DomainError(Exception):
@@ -20,6 +21,15 @@ class Record:
 @dataclass(frozen=True)
 class AuditEntry:
     id:int; action:str; entity_type:str; entity_id:int; actor:str; detail:Dict[str,Any]; previous_hash:str; entry_hash:str; created_at:str
+@dataclass(frozen=True)
+class Equipment:
+    id:int; facility:str; name:str; external_ref:Optional[str]; created_by:str; created_at:str
+@dataclass(frozen=True)
+class DeactivationBatch:
+    id:int; batch_no:str; equipment_id:int; facility:str; period_start:str; period_end:str; status:str; idempotency_key:str; created_by:str; created_at:str
+@dataclass(frozen=True)
+class Release:
+    id:int; item_id:int; status:str; decision:str; basis_signature:str; created_by:str; created_at:str; invalidated_at:Optional[str]
 def require_text(value,field,max_length=2000):
     if not isinstance(value,str) or not value.strip(): raise ValidationError(f"{field}不能为空")
     value=value.strip()
@@ -36,3 +46,12 @@ def require_number(value,field,minimum=0.0):
     return number
 def ensure_role(role,allowed):
     if role not in allowed: raise PermissionDenied("当前角色无权执行该操作")
+def require_period(start,end)->Tuple[str,str]:
+    start=require_text(start,"period_start",40)
+    end=require_text(end,"period_end",40)
+    try:
+        begin=datetime.fromisoformat(start); finish=datetime.fromisoformat(end)
+    except ValueError:
+        raise ValidationError("时段必须是ISO 8601格式")
+    if begin>=finish: raise ValidationError("period_start必须早于period_end")
+    return start,end
