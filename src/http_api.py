@@ -98,6 +98,15 @@ def make_handler(service: Service, static_dir: str):
                     actor, role = self._identity()
                     del actor
                     self._json(200, {"events": service.audit(role)})
+                elif path == "/api/deactivations":
+                    actor, role = self._identity()
+                    del actor
+                    self._json(200, {"batches": service.list_deactivations(role)})
+                elif path.startswith("/api/deactivations/"):
+                    batch_id = int(path.rsplit("/", 1)[-1])
+                    actor, role = self._identity()
+                    del actor
+                    self._json(200, service.get_deactivation(batch_id, role))
                 else:
                     self._json(404, {"error": "not_found"})
             except Exception as exc:
@@ -119,6 +128,22 @@ def make_handler(service: Service, static_dir: str):
                     expected = body.get("expected_version")
                     self._json(200, service.transition(
                         item_id, target, expected, actor, role))
+                elif path == "/api/devices":
+                    self._json(201, service.register_device(body, actor, role))
+                elif path == "/api/deactivations":
+                    batch, created = service.submit_deactivation(body, actor, role)
+                    self._json(201 if created else 200, batch)
+                elif path.startswith("/api/deactivations/") and path.endswith("/release"):
+                    batch_id = int(path.split("/")[3])
+                    self._json(200, service.release_deactivation(
+                        batch_id, body, actor, role))
+                elif path.startswith("/api/deactivations/") and path.endswith("/retry"):
+                    batch_id = int(path.split("/")[3])
+                    self._json(200, service.retry_deactivation(batch_id, actor, role))
+                elif path.startswith("/api/records/") and path.endswith("/status"):
+                    record_id = int(path.split("/")[3])
+                    self._json(200, service.update_record_status(
+                        record_id, body.get("status"), actor, role))
                 else:
                     self._json(404, {"error": "not_found"})
             except Exception as exc:

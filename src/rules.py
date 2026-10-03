@@ -4,6 +4,19 @@ TITLE='空气污染源许可与合规检查'; ENTITY='排污许可'; ID_PREFIX='
 SEVERITIES=['low', 'medium', 'high', 'critical']; STATES=['draft', 'submitted', 'inspection', 'correction', 'approved']; TRANSITIONS={'draft': ['submitted'], 'submitted': ['inspection'], 'inspection': ['correction'], 'correction': ['approved'], 'approved': []}; TRANSITION_ROLES={'submitted': ['applicant'], 'inspection': ['inspector'], 'correction': ['inspector'], 'approved': ['compliance_manager']}
 CREATE_ROLES=set(['applicant']); RECORD_ROLES=set(['applicant', 'inspector']); AUDIT_ROLES=set(['compliance_manager', 'viewer']); VIEW_ROLES=set(['applicant', 'inspector', 'compliance_manager', 'viewer'])
 SEVERITY_WEIGHT={'low': 1.0, 'medium': 3.0, 'high': 6.0, 'critical': 9.0}; DEADLINE_HOURS={'low': 72, 'medium': 24, 'high': 8, 'critical': 4}; TERMINAL_STATES=set(['approved'])
+# 停用影响交接：冻结→放行→失效重算
+DEACTIVATION_STATES=['frozen', 'released', 'invalidated']; DEACTIVATION_ROLES=set(['compliance_manager']); RELEASE_ROLES=set(['compliance_manager'])
+def validate_deactivation_period(period_start,period_end):
+    if not isinstance(period_start,str) or not period_start.strip(): raise ValidationError("period_start不能为空")
+    if not isinstance(period_end,str) or not period_end.strip(): raise ValidationError("period_end不能为空")
+    if period_start>period_end: raise ValidationError("时段开始不能晚于结束")
+    return period_start.strip(),period_end.strip()
+def next_deactivation_status(current,event):
+    if current not in DEACTIVATION_STATES: raise ValidationError("未知停用状态")
+    if event=='release' and current=='frozen': return 'released'
+    if event=='record_changed' and current=='released': return 'invalidated'
+    return current
+def can_release_deactivation(current): return current=='frozen'
 def priority_score(severity,quantity=0.0,threshold=1.0,open_records=0):
     if severity not in SEVERITY_WEIGHT: raise ValidationError("unknown severity")
     ratio=quantity/threshold if threshold>0 else 1.0
